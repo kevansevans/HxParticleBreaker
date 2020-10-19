@@ -15,6 +15,8 @@ import openfl.text.TextFieldAutoSize;
 import openfl.ui.Keyboard;
 import openfl.events.KeyboardEvent;
 import openfl.Lib;
+import openfl.display.FPS;
+import openfl.display.StageDisplayState;
 
 /**
  * ...
@@ -26,10 +28,17 @@ class Main extends Sprite
 	static var WIDTH:Int;
 	
 	var _canvas:BitmapData;
+	var _canvasBitmap:Bitmap;
 	var _blocks:Blocks;
 	var _fallBlocks:Array<Particle>;
 	var _balls:Array<Particle>;
 	var _bar:Bitmap;
+	
+	var fade:ColorTransform;
+	
+	var auto:Bool = false;
+	
+	var fps:FPS;
 
 	public function new() 
 	{
@@ -39,17 +48,19 @@ class Main extends Sprite
 		HEIGHT = Lib.current.stage.stageHeight;
 		
 		_canvas = new BitmapData(WIDTH, HEIGHT, false, 0);
-		addChild(new Bitmap(_canvas));
+		addChild(_canvasBitmap = new Bitmap(_canvas));
 		
-		var b:BitmapData = new BitmapData(Std.int(50 * (width / 465)), 10, false, 0x00FF00);
+		var b:BitmapData = new BitmapData(Std.int(50 * (width / 465)), 15, false, 0x00FF00);
 		addChild(_bar = new Bitmap(b));
 		
-		_blocks = new Blocks(WIDTH, 175);
+		fade = new ColorTransform(0.9, 0.5, 0.9);
+		
+		_blocks = new Blocks(WIDTH, Std.int(HEIGHT * 0.3));
 		
 		_fallBlocks = new Array();
 		_bar.y = HEIGHT - 50;
 		var _ball:Particle = new Particle(WIDTH / 2, HEIGHT / 2);
-		_ball.vx = Math.random() * 10;
+		_ball.vx = Math.random() * 10 * (Std.int(Math.random() * 10) % 2 == 0 ? 1 : -1);
 		_ball.vy = Math.random() * 9 -1;
 		_ball.color = 0xFFFFFF;
 		
@@ -61,19 +72,31 @@ class Main extends Sprite
 			switch (e.keyCode) {
 				case Keyboard.SPACE :
 					reset();
+				case Keyboard.A :
+					auto = !auto;
+				case Keyboard.F :
+					Lib.current.stage.displayState == StageDisplayState.NORMAL ? Lib.current.stage.displayState = StageDisplayState.FULL_SCREEN : Lib.current.stage.displayState = StageDisplayState.NORMAL;
 			}
 		});
 		
+		stage.addEventListener(Event.RESIZE, function(e:Event) { reset(); });
 	}
 	
 	function reset() {
 		
-		_blocks = new Blocks(WIDTH, 175);
+		WIDTH = Lib.current.stage.stageWidth;
+		HEIGHT = Lib.current.stage.stageHeight;
+		
+		_canvas = new BitmapData(WIDTH, HEIGHT, false, 0);
+		removeChild(_canvasBitmap);
+		addChildAt(_canvasBitmap = new Bitmap(_canvas), 0);
+		
+		_blocks = new Blocks(WIDTH, Std.int(HEIGHT * 0.3));
 		
 		_fallBlocks = new Array();
 		_bar.y = HEIGHT - 50;
 		var _ball:Particle = new Particle(WIDTH / 2, HEIGHT / 2);
-		_ball.vx = Math.random() * 10;
+		_ball.vx = Math.random() * 10 * (Std.int(Math.random() * 10) % 2 == 0 ? 1 : -1);
 		_ball.vy = Math.random() * 9 -1;
 		_ball.color = 0xFFFFFF;
 		
@@ -89,7 +112,7 @@ class Main extends Sprite
 	function update(e:Event):Void 
 	{
 		_canvas.lock();
-		_canvas.colorTransform(_canvas.rect, new ColorTransform(0.9, 0.5, 0.9));
+		_canvas.colorTransform(_canvas.rect, fade);
 		
 		for (block in _blocks.values) {
 			if (block != null) {
@@ -112,7 +135,7 @@ class Main extends Sprite
 				if (hitParticle != null) {
 					
 					var removedP:Particle = _blocks.removeParticle(Std.int(ball.x), Std.int(ball.y));
-					removedP.vx = Math.cos(bradius + Math.PI * 2 / (30 * Math.random()) - 15) * 3;
+					removedP.vx = (Math.cos(bradius + Math.PI * 2 / (30 * Math.random()) - 15) * 3) * (Std.int(Math.random() * 10) % 2 == 0 ? 1 : -1);
 					removedP.vy = 1;
 					removedP.color = hitParticle.color;
 					_fallBlocks.push(removedP);
@@ -150,12 +173,17 @@ class Main extends Sprite
 			fallP.vy += 0.1;
 			fallP.x += fallP.vx;
 			fallP.y += fallP.vy;
+			if ((fallP.x < 0 && fallP.vx < 0) || (fallP.x > WIDTH && fallP.vx > 0))
+			{
+				fallP.vx = -fallP.vx;
+			}
+			
 			_canvas.setPixel(Std.int(fallP.x), Std.int(fallP.y), fallP.color);
 			
 			if (_bar.hitTestPoint(fallP.x, fallP.y))
 			{
 				var newball:Particle = new Particle(fallP.x, fallP.y);
-				newball.vx = Math.random() * 10;
+				newball.vx = Math.random() * 10 * (Std.int(Math.random() * 10) % 2 == 0 ? 1 : -1);
 				newball.vy = Math.random() * 9 + 1;
 				newball.color = fallP.color;
 				_balls.push(newball);
@@ -172,17 +200,33 @@ class Main extends Sprite
 			}
 		}
 		
-		_bar.x = stage.mouseX - (_bar.width / 2);
+		if (!auto) {
+			_bar.x = stage.mouseX - (_bar.width / 2);
+		} else {
+			_bar.x = _balls[0].x - (_bar.width / 2);
+		}
+		
+		if (_bar.x <= 0) _bar.x = 0;
+		if (_bar.x + _bar.width >= WIDTH) _bar.x = WIDTH - _bar.width;
+		
 		_canvas.unlock();
 		
 		if (_blocks.count == 0) {
-			removeEventListener(Event.ENTER_FRAME, update);
-			var clearTF:TextField = new TextField();
-			clearTF.text = "CLEAR!\nおめでと";
-			clearTF.textColor = 0xFFFFFF;
-			clearTF.autoSize = TextFieldAutoSize.LEFT;
-			_canvas.draw(clearTF,new Matrix(5,0,0,5,WIDTH/2-clearTF.width*5/2,HEIGHT/2-clearTF.height*5/2));
+			freeze_game("CLEAR!\nおめでと");
 		}
+		
+		if (_balls.length == 0) {
+			freeze_game("Press space to reset\nスペースを押してリセットします");
+		}
+	}
+	
+	function freeze_game(_message:String) {
+		removeEventListener(Event.ENTER_FRAME, update);
+		var clearTF:TextField = new TextField();
+		clearTF.text = _message;
+		clearTF.textColor = 0xFFFFFF;
+		clearTF.autoSize = TextFieldAutoSize.LEFT;
+		_canvas.draw(clearTF,new Matrix(3,0,0,3,WIDTH/2-clearTF.width*5/2,HEIGHT/2-clearTF.height*5/2));
 	}
 
 }
